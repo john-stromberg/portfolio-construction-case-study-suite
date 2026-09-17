@@ -2,9 +2,15 @@
 
 Track: **SMA Quantitative Research**
 
-## Research purpose
+A research-grade portfolio construction case study suite that demonstrates a reproducible workflow for turning a constrained asset universe into an interpretable allocation memo.
 
-This project is designed to be run independently as a quantitative research module for portfolio construction and risk/exposure analysis across **equities, bonds, alternatives, ETFs, and mutual funds**.
+## What this repo does
+
+- Loads a baseline multi-asset universe
+- Applies explicit portfolio constraints
+- Produces a portfolio construction case study with weights, risk, and return diagnostics
+- Exports markdown and JSON outputs for reporting
+- Provides a notebook for exploratory analysis
 
 ## Local research workflow
 
@@ -14,37 +20,44 @@ This project is designed to be run independently as a quantitative research modu
    - `pip install -e .`
 2. Run tests
    - `pytest -q`
-3. Run core module
-   - `python src/core.py`
+3. Run the case-study module
+   - `python -c "from src.core import main; print(main())"`
 4. Open notebook workflow
-   - Start Jupyter and run `notebooks/research.ipynb` for exploratory analysis
-5. Generate/report findings
-   - Update `reports/method_note.md` with assumptions and portfolio implications
+   - Start Jupyter and run `notebooks/research.ipynb`
+5. Review outputs
+   - `reports/portfolio_construction_case_study.md`
+   - `reports/portfolio_construction_case_study.json`
+   - `reports/method_note.md`
 
 ## Repository structure
 
-- `src/` quantitative methods and model logic
+- `src/` portfolio construction logic and report generation
 - `tests/` unit and methodological checks
-- `notebooks/` exploratory and robustness notebooks
-- `reports/` method notes and decision summaries
-- `configs/` run parameters and defaults
-- `data/` local data artifacts
+- `notebooks/` exploratory notebook workflow
+- `reports/` method note and generated outputs
+- `configs/` study metadata and allocation bounds
+- `data/` optional local data artifacts
 
-## Expected outputs
+## Case study output
 
-- Reproducible model diagnostics and result tables
-- Explainable interpretation of risk/exposure and optimization behavior
-- Portfolio-construction implications documented for implementation decisions
+The core workflow returns:
+
+- Title and hypothesis
+- Expected return, volatility, and Sharpe ratio
+- Asset-level weights
+- Diagnostics and portfolio implications
+- Risks and implementation notes
 
 ## Research memo template
 
-- **Hypothesis:** What quantitative relationship is being tested?
-- **Specification:** Which model/constraints are used?
-- **Robustness:** What alternate tests confirm stability?
+- **Hypothesis:** What allocation question is being tested?
+- **Specification:** Which constraints and assumptions are used?
+- **Robustness:** What alternate checks confirm stability?
 - **Portfolio implication:** What action follows from the results?
 
 ## Notes
 
 - Keep assumptions explicit and track known model limitations.
+- Use the notebook for exploration and the `main()` entry point for reproducible outputs.
 - Prefer interpretable outputs that can be communicated to PM and risk stakeholders.
 

@@ -33,6 +33,17 @@ except ModuleNotFoundError:  # pragma: no cover - notebook/script fallback
     from sma_quant_core.models import Asset, PortfolioConstraint, PortfolioConstraints
     from sma_quant_core.metrics import Metrics
 
+try:
+    from scenarios import Scenario, apply_scenario
+except ModuleNotFoundError:  # pragma: no cover - late import fallback
+    import sys
+    CURRENT_FILE = Path(__file__).resolve()
+    REPO_ROOT = CURRENT_FILE.parents[1]
+    SRC_PATH = REPO_ROOT / "src"
+    if SRC_PATH.exists() and str(SRC_PATH) not in sys.path:
+        sys.path.insert(0, str(SRC_PATH))
+    from scenarios import Scenario, apply_scenario
+
 
 @dataclass
 class CaseStudyResult:
@@ -85,6 +96,68 @@ class CaseStudyResult:
             json.dumps(self.diagnostics, indent=2, sort_keys=True),
         ])
         return "\n".join(lines)
+
+
+@dataclass
+class StrategyComparison:
+    """Container for comparing multiple portfolio construction strategies."""
+
+    title: str
+    strategies: dict[str, CaseStudyResult]  # strategy_name -> CaseStudyResult
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "title": self.title,
+            "strategies": {name: result.to_dict() for name, result in self.strategies.items()},
+        }
+
+    def comparison_table(self) -> str:
+        """Generate a markdown table comparing key metrics across strategies."""
+        lines = [
+            f"# {self.title}",
+            "",
+            "## Strategy Comparison",
+            "",
+            "| Strategy | Expected Return | Volatility | Sharpe Ratio | Max Weight | Weight Concentration |",
+            "|----------|-----------------|------------|--------------|-----------|-----------------------|",
+        ]
+
+        for strategy_name, result in sorted(self.strategies.items()):
+            # Calculate weight concentration (Herfindahl index: sum of squared weights)
+            concentration = sum(w**2 for w in result.weights.values())
+            max_weight = max(result.weights.values())
+
+            lines.append(
+                f"| {strategy_name} | {result.expected_return:.2%} | {result.expected_volatility:.2%} "
+                f"| {result.sharpe_ratio:.4f} | {max_weight:.2%} | {concentration:.4f} |"
+            )
+
+        lines.extend(
+            [
+                "",
+                "## Strategy Details",
+                "",
+            ]
+        )
+
+        for strategy_name, result in sorted(self.strategies.items()):
+            lines.extend(
+                [
+                    f"### {strategy_name}",
+                    "",
+                    f"**Weights distribution:**",
+                    "",
+                ]
+            )
+            for asset_id, weight in sorted(result.weights.items(), key=lambda item: (-item[1], item[0])):
+                lines.append(f"- {asset_id}: {weight:.2%}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def to_markdown(self) -> str:
+        """Generate full comparison markdown report."""
+        return self.comparison_table()
 
 
 DEFAULT_SAMPLE_ASSETS = [
@@ -160,6 +233,29 @@ def _as_asset_map(assets: list[Asset]) -> dict[str, Asset]:
     return {asset.id: asset for asset in assets}
 
 
+def construct_equal_weight_portfolio(assets: list[Asset] | None = None) -> dict[str, float]:
+    """Construct an equal-weight portfolio (1/N)."""
+    assets = assets or list(DEFAULT_SAMPLE_ASSETS)
+    weight = 1.0 / len(assets)
+    return {asset.id: float(weight) for asset in assets}
+
+
+def construct_risk_parity_portfolio(
+    assets: list[Asset] | None = None,
+    correlation_matrix: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Construct a risk-parity portfolio (inverse-volatility weighted)."""
+    assets = assets or list(DEFAULT_SAMPLE_ASSETS)
+    correlation_matrix = correlation_matrix if correlation_matrix is not None else DEFAULT_CORRELATION
+
+    # Risk parity: weight each asset inversely to its volatility
+    volatilities = np.array([asset.volatility for asset in assets], dtype=float)
+    inverse_vols = 1.0 / (volatilities + 1e-8)  # Add small epsilon to avoid division by zero
+    weights = inverse_vols / inverse_vols.sum()
+
+    return {asset.id: float(weight) for asset, weight in zip(assets, weights, strict=False)}
+
+
 def _portfolio_statistics(weights: dict[str, float], assets: list[Asset], correlation_matrix: np.ndarray) -> tuple[float, float, float, dict[str, Any]]:
     asset_map = _as_asset_map(assets)
     ordered_assets = list(weights)
@@ -174,16 +270,119 @@ def _portfolio_statistics(weights: dict[str, float], assets: list[Asset], correl
     return expected_return, expected_volatility, sharpe_ratio, diagnostics
 
 
+def compare_strategies(
+    title: str = "Portfolio Strategy Comparison",
+    assets: list[Asset] | None = None,
+    constraints: PortfolioConstraints | None = None,
+    correlation_matrix: np.ndarray | None = None,
+    scenario: Scenario | None = None,
+) -> StrategyComparison:
+    """Compare multiple portfolio construction strategies side by side.
+
+    Runs three canonical methods:
+      1. Curriculum: constrained mean-variance (baseline case study)
+      2. RiskParity: inverse-volatility weights
+      3. EqualWeight: 1/N naive diversification
+
+    Args:
+        title: Comparison title
+        assets: Asset universe
+        constraints: Portfolio constraints
+        correlation_matrix: Asset correlation matrix
+        scenario: Optional market scenario for stress testing
+
+    Returns:
+        A StrategyComparison containing all results.
+    """
+    assets = assets or list(DEFAULT_SAMPLE_ASSETS)
+    correlation_matrix = correlation_matrix if correlation_matrix is not None else DEFAULT_CORRELATION
+
+    strategies = {}
+
+    # Curriculum method: constrained case study
+    curriculum = construct_case_study(
+        title="Curriculum (Constrained Mean-Variance)",
+        hypothesis="A balanced portfolio respects explicit weight constraints and risk bounds.",
+        assets=assets,
+        constraints=constraints,
+        correlation_matrix=correlation_matrix,
+        scenario=scenario,
+    )
+    strategies["Curriculum"] = curriculum
+
+    # Risk Parity method
+    rp_assets = assets if not scenario or scenario == Scenario.BASELINE else apply_scenario(assets, scenario)
+    rp_weights = construct_risk_parity_portfolio(assets=rp_assets, correlation_matrix=correlation_matrix)
+    rp_return, rp_vol, rp_sharpe, rp_diag = _portfolio_statistics(rp_weights, rp_assets, correlation_matrix)
+    risk_parity = CaseStudyResult(
+        title="Risk Parity (Inverse-Volatility Weighted)",
+        hypothesis="Equal risk contribution from each asset improves robustness and reduces concentration.",
+        summary="Risk parity weights each asset inversely to its volatility, resulting in equal marginal risk contribution.",
+        weights=rp_weights,
+        expected_return=rp_return,
+        expected_volatility=rp_vol,
+        sharpe_ratio=rp_sharpe,
+        portfolio_metrics=rp_diag,
+        recommendation="Risk parity is useful for diversification when constraints are relaxed.",
+        risks=[
+            "Relies on volatility estimates that may shift in stress regimes.",
+            "May concentrate in lower-volatility assets during normal markets.",
+        ],
+        diagnostics={"method": "inverse-volatility-weighted", "asset_count": len(rp_assets)},
+    )
+    strategies["RiskParity"] = risk_parity
+
+    # Equal Weight method
+    ew_assets = assets if not scenario or scenario == Scenario.BASELINE else apply_scenario(assets, scenario)
+    ew_weights = construct_equal_weight_portfolio(assets=ew_assets)
+    ew_return, ew_vol, ew_sharpe, ew_diag = _portfolio_statistics(ew_weights, ew_assets, correlation_matrix)
+    equal_weight = CaseStudyResult(
+        title="Equal Weight (1/N Naive)",
+        hypothesis="A simple 1/N allocation provides a competitive baseline and is robust to estimation error.",
+        summary="Equal weight allocates 1/N to each asset, providing a naive but surprisingly competitive diversification.",
+        weights=ew_weights,
+        expected_return=ew_return,
+        expected_volatility=ew_vol,
+        sharpe_ratio=ew_sharpe,
+        portfolio_metrics=ew_diag,
+        recommendation="Equal weight is a robust, zero-alpha benchmark and useful for backtesting optimization quality.",
+        risks=[
+            "Ignores asset characteristics and correlations.",
+            "No response to changing market conditions or volatility.",
+        ],
+        diagnostics={"method": "equal-weight", "asset_count": len(ew_assets)},
+    )
+    strategies["EqualWeight"] = equal_weight
+
+    return StrategyComparison(title=title, strategies=strategies)
+
+
 def construct_case_study(
     title: str = "Portfolio Construction Case Study",
     hypothesis: str = "A balanced multi-asset portfolio can improve risk-adjusted returns while respecting implementation constraints.",
     assets: list[Asset] | None = None,
     constraints: PortfolioConstraints | None = None,
     correlation_matrix: np.ndarray | None = None,
+    scenario: Scenario | None = None,
 ) -> CaseStudyResult:
-    """Build a simple research case study with normalized constrained weights."""
+    """Build a simple research case study with normalized constrained weights.
+
+    Args:
+        title: Case study title
+        hypothesis: Research hypothesis
+        assets: List of assets to include (defaults to DEFAULT_SAMPLE_ASSETS)
+        constraints: Portfolio constraints (defaults to build_default_constraints())
+        correlation_matrix: Asset correlation matrix (defaults to DEFAULT_CORRELATION)
+        scenario: Optional market scenario to stress-test (defaults to Scenario.BASELINE)
+
+    Returns:
+        CaseStudyResult containing portfolio weights, returns, and diagnostics
+    """
 
     assets = assets or list(DEFAULT_SAMPLE_ASSETS)
+    if scenario and scenario != Scenario.BASELINE:
+        assets = apply_scenario(assets, scenario)
+        title = f"{title} ({scenario.value})"
     constraints = constraints or build_default_constraints()
     correlation_matrix = correlation_matrix if correlation_matrix is not None else DEFAULT_CORRELATION
 

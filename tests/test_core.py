@@ -22,6 +22,14 @@ from core import (  # noqa: E402
     main,
     run_quant_placeholder,
 )
+from clients import (  # noqa: E402
+    ClientGoal,
+    ClientRiskTolerance,
+    construct_portfolio_for_client,
+    generate_client_account,
+    generate_client_accounts,
+    generate_client_portfolio_examples,
+)
 from scenarios import Scenario, apply_scenario  # noqa: E402
 
 
@@ -224,4 +232,38 @@ def test_construct_case_study_with_solver_and_scenario():
 
     # Risk-off scenario should have lower expected return
     assert result_risk_off.expected_return < result_baseline.expected_return
+
+
+def test_generate_client_account_is_reproducible():
+    client_a = generate_client_account(seed=42)
+    client_b = generate_client_account(seed=42)
+    assert client_a.to_dict() == client_b.to_dict()
+    assert client_a.risk_tolerance in list(ClientRiskTolerance)
+    assert client_a.goal in list(ClientGoal)
+    assert client_a.investable_capital > 0
+    assert client_a.constraints.budget_constraint == 1.0
+
+
+def test_generate_client_accounts_count():
+    clients = generate_client_accounts(count=3, seed=123)
+    assert len(clients) == 3
+    assert len({client.client_id for client in clients}) == 3
+
+
+def test_client_account_portfolio_construction():
+    client = generate_client_account(seed=7)
+    example = construct_portfolio_for_client(client, use_solver=True)
+    assert example.client.client_id == client.client_id
+    assert pytest.approx(sum(example.weights.values()), rel=1e-6) == 1.0
+    assert example.result.expected_volatility > 0
+
+
+def test_generate_client_portfolio_examples():
+    examples = generate_client_portfolio_examples(count=2, seed=99, use_solver=True)
+    assert len(examples) == 2
+    for example in examples:
+        assert pytest.approx(sum(example.weights.values()), rel=1e-6) == 1.0
+        assert example.result.expected_return > 0
+        assert example.client.constraints.budget_constraint == 1.0
+
 

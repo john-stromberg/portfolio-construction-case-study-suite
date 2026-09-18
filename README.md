@@ -137,10 +137,11 @@ Each scenario adjusts asset return and volatility expectations to simulate tail 
 ```
 src/
   core.py          – Portfolio construction methods, solver optimization, comparison engine, exports
+  clients.py       – Synthetic client account intake generator and optimization adapter
   scenarios.py     – Scenario definitions and stress-test application
   __init__.py      – Package exports
 tests/
-  test_core.py     – 19 comprehensive tests covering methods, solver paths, scenarios, comparisons
+  test_core.py     – 23 comprehensive tests covering methods, solver paths, client intake, scenarios, comparisons
 notebooks/
   research.ipynb   – Interactive notebook with baseline, comparison, and scenario workflows
 reports/
@@ -179,6 +180,32 @@ Example:
 | EqualWeight | 5.60% | 8.71% | 0.3563 | 20.00% | 0.0500 |
 ```
 
+## Client account intake workflow
+
+This repo can now mimic new client accounts being brought in for portfolio construction.
+
+Use the generator to create synthetic client accounts with:
+- risk tolerance
+- investment horizon
+- capital size
+- liquidity need
+- tax sensitivity
+- generated constraints aligned to the existing solver workflow
+
+Example:
+
+```python
+from src import generate_client_account, generate_client_portfolio_examples
+
+client = generate_client_account(seed=42)
+example = generate_client_portfolio_examples(count=3, seed=42)
+
+print(client.to_dict())
+print(example[0].result.to_markdown())
+```
+
+The generated client can be passed directly into the solver-backed construction flow through the included adapter.
+
 ## Testing & validation
 
 Run the full test suite:
@@ -187,7 +214,7 @@ Run the full test suite:
 pytest tests/test_core.py -v
 ```
 
-Tests cover (19 total):
+Tests cover (23 total):
 
 - Single construction methods (Optimal/Solver, Risk Parity, Equal Weight)
 - Solver-backed optimization and fallback behavior

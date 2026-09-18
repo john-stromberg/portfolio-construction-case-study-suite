@@ -1,0 +1,171 @@
+import json
+from pathlib import Path
+
+notebook_path = Path('notebooks/research.ipynb')
+
+# Create complete notebook
+nb = {
+    "cells": [
+        {
+            "cell_type": "markdown",
+            "id": "d0270bb6",
+            "metadata": {},
+            "source": [
+                "# Portfolio Construction Case Study\n",
+                "\n",
+                "This notebook explores portfolio construction using solver-backed optimization and comparative method analysis.\n",
+                "\n",
+                "**Key feature**: The Curriculum (Optimal) method uses `cvxpy` to solve a constrained minimum-variance optimization problem. If cvxpy unavailable, it gracefully falls back to a heuristic method.\n",
+                "\n",
+                "## Workflow\n",
+                "1. Bootstrap imports\n",
+                "2. Load the case-study configuration\n",
+                "3. Run the solver-backed portfolio construction workflow\n",
+                "4. Compare with heuristic and other methods\n",
+                "5. Stress-test under market scenarios\n"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "id": "40144410",
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "import sys\nfrom pathlib import Path\n\ndef find_repo_root(start = None):\n    current = (start or Path.cwd()).resolve()\n    for candidate in [current, *current.parents]:\n        if (candidate / 'src' / 'core.py').exists() and (candidate / 'configs' / 'default.yml').exists():\n            return candidate\n    raise FileNotFoundError('Could not locate repository root')\n\nrepo_root = find_repo_root()\nsrc_path = repo_root / 'src'\nif str(src_path) not in sys.path:\n    sys.path.insert(0, str(src_path))\n\nfrom core import build_default_constraints, construct_case_study, construct_optimal_portfolio, export_case_study, load_config, compare_strategies\nfrom scenarios import Scenario\n\nprint(f'Repo root: {repo_root}')\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "id": "baseline-intro",
+            "metadata": {},
+            "source": [
+                "## Baseline Portfolio Construction (Solver-Backed)\n",
+                "\n",
+                "Run the primary case study using cvxpy for constrained minimum-variance optimization.\n"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "id": "baseline-cell",
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Run baseline case study (solver-backed by default)\nprint(\"\\n\" + \"=\"*70)\nprint(\"BASELINE PORTFOLIO CONSTRUCTION\")\nprint(\"=\"*70)\nprint(\"Using cvxpy solver for constrained minimum-variance optimization.\\n\")\n\nconfig = load_config(repo_root / 'configs' / 'default.yml')\nconstraints = build_default_constraints()\nresult = construct_case_study(title=config.get('study_title', 'Portfolio Construction Case Study'), constraints=constraints)\npaths = export_case_study(result, repo_root / config.get('output_dir', 'reports'))\n\nprint(result.to_markdown())\nprint('\\nExported files:')\nfor label, path in paths.items():\n    print(f'{label}: {path}')\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "id": "strategy-comparison-intro",
+            "metadata": {},
+            "source": [
+                "## Strategy Comparison\n",
+                "\n",
+                "Compare all three methods side by side:\n",
+                "- **Curriculum (Optimal)**: Solver-backed minimum-variance with cvxpy (or heuristic fallback)\n",
+                "- **Risk Parity**: Inverse-volatility weighted (equal risk contribution)\n",
+                "- **Equal Weight**: 1/N naive allocation (robustness benchmark)\n",
+                "\n",
+                "Understand trade-offs, constraints, and when each method is appropriate.\n"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "id": "strategy-comparison-cell",
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Compare all three construction methods side by side\ncomparison = compare_strategies(\n    title=\"Portfolio Strategy Comparison (Baseline)\",\n    constraints=constraints\n)\n\nprint(comparison.to_markdown())\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "id": "scenario-analysis-intro",
+            "metadata": {},
+            "source": [
+                "## Scenario Analysis & Stress Testing\n",
+                "\n",
+                "Test portfolio robustness under market stress scenarios. Each scenario adjusts asset expectations and volatilities to simulate realistic stress regimes.\n"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "id": "scenario-risk-off-cell",
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Compare strategies under RISK_OFF scenario\nprint(\"\\n\" + \"=\"*70)\nprint(\"SCENARIO: RISK_OFF (Flight to Safety)\")\nprint(\"=\"*70)\nprint(\"In this scenario: equities down, bonds rally, gold spikes.\\n\")\n\ncomparison_risk_off = compare_strategies(\n    title=\"Portfolio Strategy Comparison (Risk-Off Scenario)\",\n    constraints=constraints,\n    scenario=Scenario.RISK_OFF\n)\n\nprint(comparison_risk_off.to_markdown())\n"
+            ]
+        },
+        {
+            "cell_type": "code",
+            "execution_count": None,
+            "id": "scenario-shock-cell",
+            "metadata": {},
+            "outputs": [],
+            "source": [
+                "# Compare strategies under EQUITY_SHOCK scenario\nprint(\"\\n\" + \"=\"*70)\nprint(\"SCENARIO: EQUITY_SHOCK (Severe Equity Downturn)\")\nprint(\"=\"*70)\nprint(\"In this scenario: equities crater, REITs collapse, bonds rally sharply, gold spikes.\\n\")\n\ncomparison_shock = compare_strategies(\n    title=\"Portfolio Strategy Comparison (Equity Shock Scenario)\",\n    constraints=constraints,\n    scenario=Scenario.EQUITY_SHOCK\n)\n\nprint(comparison_shock.to_markdown())\n"
+            ]
+        },
+        {
+            "cell_type": "markdown",
+            "id": "learning-insights",
+            "metadata": {},
+            "source": [
+                "## Key Learning Insights\n",
+                "\n",
+                "### Curriculum (Optimal) - Solver-Backed Optimization\n",
+                "- Uses cvxpy to solve constrained minimum-variance problem (convex optimization)\n",
+                "- Respects explicit weight bounds defined by investment policy\n",
+                "- Deterministic and repeatable; finds global optimum\n",
+                "- Falls back to heuristic method if cvxpy unavailable\n",
+                "- More sophisticated than heuristics; requires accurate risk/return estimates\n",
+                "- Performance depends on constraint calibration\n",
+                "\n",
+                "### Risk Parity (Inverse-Volatility Weighted)\n",
+                "- Each asset contributes equally to portfolio risk\n",
+                "- Simpler to maintain in dynamic markets\n",
+                "- Works well when volatilities are stable\n",
+                "- Can underperform if volatility structure changes (see stress scenarios)\n",
+                "\n",
+                "### Equal Weight (1/N Naive)\n",
+                "- Simplest and most robust to estimation error\n",
+                "- Surprisingly competitive in practice\n",
+                "- Good benchmark for evaluating optimization quality\n",
+                "- Ignores market structure entirely\n",
+                "\n",
+                "### Stress Testing Benefits\n",
+                "- Reveals how methods respond to changing market conditions\n",
+                "- Shows which methods provide diversification under stress\n",
+                "- Helps understand concentration risk and tail exposure\n",
+                "- Informs risk limits and hedging strategy\n"
+            ]
+        }
+    ],
+    "metadata": {
+        "kernelspec": {
+            "display_name": "Python [conda env:base] *",
+            "language": "python",
+            "name": "conda-base-py"
+        },
+        "language_info": {
+            "codemirror_mode": {"name": "ipython", "version": 3},
+            "file_extension": ".py",
+            "mimetype": "text/x-python",
+            "name": "python",
+            "nbconvert_exporter": "python",
+            "pygments_lexer": "ipython3",
+            "version": "3.12.14"
+        }
+    },
+    "nbformat": 4,
+    "nbformat_minor": 5
+}
+
+with open(notebook_path, 'w') as f:
+    json.dump(nb, f, indent=1)
+
+print("OK")

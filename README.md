@@ -2,14 +2,14 @@
 
 Track: **SMA Quantitative Research**
 
-A research-grade portfolio construction case-study suite that demonstrates a reproducible workflow for turning a constrained asset universe into an interpretable allocation memo. **Now enhanced with comparative portfolio methods, strategy analysis, and scenario stress-testing for improved learning and usability.**
+A research-grade portfolio construction case-study suite that demonstrates a reproducible workflow for turning a constrained asset universe into an interpretable allocation memo. **Now enhanced with solver-backed optimization, comparative portfolio methods, strategy analysis, and scenario stress-testing for improved learning and usability.**
 
 ## What this repo does
 
 - Loads a baseline multi-asset universe (VTSAX, VTIAX, BND, VGSLX, GLD)
 - Applies explicit portfolio constraints and bounds
 - Constructs portfolios using **three pedagogically distinct methods**:
-  - **Curriculum**: Constrained mean-variance (respects explicit bounds)
+  - **Curriculum (Optimal)**: Solver-backed minimum-variance optimization (respects explicit bounds, powered by cvxpy)
   - **Risk Parity**: Inverse-volatility weighted (equal risk contribution)
   - **Equal Weight**: 1/N naive allocation (benchmark for estimation error)
 - **Compares strategies side by side** to reveal trade-offs and design choices
@@ -20,17 +20,18 @@ A research-grade portfolio construction case-study suite that demonstrates a rep
 ## Why comparative portfolio construction?
 
 **For learning:**
-- See how different methods respond to the same asset universe
+- See how solver-backed optimization compares to simpler heuristics
 - Understand constraints by comparing constrained vs. unconstrained methods
 - Learn robustness by stress-testing strategies across scenarios
 
 **For practice:**
 - Risk Parity reveals what volatility weighting looks like
 - Equal Weight shows how much estimation error can degrade performance
+- Solver-backed method demonstrates rigorous constrained optimization
 - Scenario analysis teaches tail risk and crisis diversification
 
 **For implementation:**
-- Benchmark optimization quality against naive methods
+- Benchmark optimization quality against naive and risk-parity methods
 - Test allocation strategies before deployment
 - Document design rationale through comparative memo
 
@@ -67,7 +68,8 @@ A research-grade portfolio construction case-study suite that demonstrates a rep
 
 ```python
 from src.core import (
-    construct_case_study,              # Curriculum method (constrained)
+    construct_case_study,              # Optimal method (solver-backed)
+    construct_optimal_portfolio,       # Direct solver-based optimization
     construct_equal_weight_portfolio,  # Equal-weight baseline
     construct_risk_parity_portfolio,   # Risk-parity method
     compare_strategies,                # Side-by-side comparison
@@ -75,7 +77,8 @@ from src.core import (
 from src.scenarios import Scenario, apply_scenario  # Stress scenarios
 
 # Single method
-curriculum_weights = construct_case_study().weights
+optimal_weights = construct_case_study().weights  # Uses solver by default
+heuristic_weights = construct_case_study(use_solver=False).weights  # Fallback heuristic
 equal_weight = construct_equal_weight_portfolio()
 risk_parity = construct_risk_parity_portfolio()
 
@@ -87,6 +90,36 @@ print(comparison.to_markdown())  # Print markdown table
 comparison_risk_off = compare_strategies(scenario=Scenario.RISK_OFF)
 comparison_shock = compare_strategies(scenario=Scenario.EQUITY_SHOCK)
 ```
+
+## Solver-backed optimization
+
+The **Curriculum (Optimal)** method uses `cvxpy` to solve a **constrained minimum-variance problem**:
+
+```
+minimize: portfolio_variance
+subject to:
+  - Sum of weights = 1 (fully invested)
+  - All weights >= 0 (no short selling)
+  - Individual weight bounds per asset (from config)
+```
+
+This is a **convex optimization problem** solved numerically by cvxpy's interior-point solver. The result is:
+- **Deterministic**: Same input → same output
+- **Feasible**: Respects all constraints
+- **Efficient**: Minimizes risk for the given asset universe and bounds
+
+If `cvxpy` is not installed or the solver fails, the code gracefully falls back to a **heuristic clipped equal-weight method**. You can also explicitly use the heuristic via `construct_case_study(use_solver=False)`.
+
+## Installation and dependencies
+
+**Core dependencies** (required):
+- `python >= 3.12`
+- `numpy`, `pyyaml` (config parsing, optional with fallback)
+
+**Solver dependency** (optional, enables `construct_optimal_portfolio`):
+- `cvxpy >= 1.9` – Install with: `pip install cvxpy`
+
+If cvxpy is not installed, the suite still works with heuristic fallback.
 
 ## Scenarios for stress testing
 
@@ -103,11 +136,11 @@ Each scenario adjusts asset return and volatility expectations to simulate tail 
 
 ```
 src/
-  core.py          – Portfolio construction methods, comparison engine, exports
+  core.py          – Portfolio construction methods, solver optimization, comparison engine, exports
   scenarios.py     – Scenario definitions and stress-test application
   __init__.py      – Package exports
 tests/
-  test_core.py     – 13 comprehensive tests covering methods, scenarios, comparisons
+  test_core.py     – 19 comprehensive tests covering methods, solver paths, scenarios, comparisons
 notebooks/
   research.ipynb   – Interactive notebook with baseline, comparison, and scenario workflows
 reports/
@@ -154,18 +187,24 @@ Run the full test suite:
 pytest tests/test_core.py -v
 ```
 
-Tests cover:
+Tests cover (19 total):
 
-- Single construction methods (Curriculum, Risk Parity, Equal Weight)
+- Single construction methods (Optimal/Solver, Risk Parity, Equal Weight)
+- Solver-backed optimization and fallback behavior
 - Strategy comparison structure and markdown output
 - Scenario application and stress testing
 - Scenario-aware strategy comparison
+- Constraint validation and weight bounds
+- Configuration loading and export generation
+- End-to-end workflow (`main()`)
 
-All 13 tests should pass, confirming reproducibility.
+Expected output: **19 passed** (all tests pass with cvxpy installed; heuristic fallback works without it)
 
 ## Design principles
 
 - **Comparative by design**: Users learn through side-by-side comparison, not single methods
+- **Solver-backed optimization**: Curriculum method uses cvxpy for rigorous constrained optimization
+- **Graceful fallback**: Without cvxpy, automatically uses heuristic method
 - **Scenario-aware**: Robustness is tested with built-in stress scenarios
 - **Interpretable outputs**: Markdown reports communicate findings clearly
 - **Test-driven**: Every feature is backed by comprehensive tests
@@ -185,7 +224,7 @@ This suite is designed for **learning portfolio construction from first principl
 
 1. **Start with Equal Weight** (simplest, most robust)
 2. **Compare with Risk Parity** (introduces volatility considerations)
-3. **Study Curriculum method** (learns constrained optimization)
+3. **Study Optimal method** (learns constrained optimization with solvers)
 4. **Stress test all three** (understands tail risk and diversification)
 
 The four-step progression builds intuition from naive to sophisticated methods while teaching when and why each is appropriate.

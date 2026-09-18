@@ -17,28 +17,28 @@
       "VTSAX": 0.1
     }
   },
-  "expected_return": 0.06263157894736843,
-  "expected_volatility": 0.09481581503717318,
+  "expected_return": 0.05355519999926875,
+  "expected_volatility": 0.05794570230386937,
   "hypothesis": "A balanced multi-asset portfolio can improve risk-adjusted returns while respecting implementation constraints.",
   "portfolio_metrics": {
-    "expected_return": 0.06263157894736843,
-    "expected_volatility": 0.09481581503717317,
-    "sharpe_ratio": 0.4496251910153853
+    "expected_return": 0.05355519999926875,
+    "expected_volatility": 0.05794570230386937,
+    "sharpe_ratio": 0.5790800467531493
   },
   "recommendation": "Use the resulting allocation as the baseline strategic mix, then refine with manager views, liquidity constraints, and implementation cost analysis.",
   "risks": [
-    "Weights are derived from a normalized constrained heuristic and should be replaced with a solver for production use.",
     "Expected return and risk are based on forward estimates rather than realized data.",
-    "Correlations may shift in stress regimes and reduce diversification benefits."
+    "Correlations may shift in stress regimes and reduce diversification benefits.",
+    "Optimization assumes known risk/return parameters that may be unstable."
   ],
-  "sharpe_ratio": 0.44962519101538523,
-  "summary": "The case study constructs a diversified core portfolio that balances growth, income, and diversifiers under explicit bounds.",
+  "sharpe_ratio": 0.5790800467531493,
+  "summary": "The case study constructs a diversified core portfolio that balances growth, income, and diversifiers under explicit bounds using optimization.",
   "title": "Portfolio Construction Case Study",
   "weights": {
-    "BND": 0.21052631578947367,
-    "GLD": 0.15789473684210525,
-    "VGSLX": 0.21052631578947367,
-    "VTIAX": 0.21052631578947367,
-    "VTSAX": 0.21052631578947367
+    "BND": 0.5000000000128196,
+    "GLD": 0.15000000003706915,
+    "VGSLX": 0.094479999957528,
+    "VTIAX": 0.09999999995311137,
+    "VTSAX": 0.15552000003947192
   }
 }

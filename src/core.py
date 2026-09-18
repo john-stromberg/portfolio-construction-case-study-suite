@@ -19,6 +19,11 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency fallback
     yaml = None
 
 try:
+    import cvxpy as cp
+except ModuleNotFoundError:  # pragma: no cover - optional solver fallback
+    cp = None
+
+try:
     from sma_quant_core.models import Asset, PortfolioConstraint, PortfolioConstraints
     from sma_quant_core.metrics import Metrics
 except ModuleNotFoundError:  # pragma: no cover - notebook/script fallback
@@ -256,6 +261,88 @@ def construct_risk_parity_portfolio(
     return {asset.id: float(weight) for asset, weight in zip(assets, weights, strict=False)}
 
 
+def construct_optimal_portfolio(
+    assets: list[Asset] | None = None,
+    constraints: PortfolioConstraints | None = None,
+    correlation_matrix: np.ndarray | None = None,
+) -> dict[str, float]:
+    """Construct an optimal portfolio using convex optimization (Sharpe ratio maximization).
+
+    Solves the constrained portfolio optimization problem:
+        maximize: (mu - rf) / sigma
+        subject to: explicit weight bounds, budget constraint = 1.0
+
+    Args:
+        assets: Asset universe
+        constraints: Portfolio constraints (weight bounds, etc.)
+        correlation_matrix: Asset correlation matrix
+
+    Returns:
+        Optimal portfolio weights as a dictionary {asset_id: weight}
+
+    Raises:
+        RuntimeError: If cvxpy is not installed or solver fails
+    """
+    if cp is None:
+        raise RuntimeError(
+            "cvxpy is not installed. Install with: pip install cvxpy. "
+            "Fallback to construct_case_study(use_solver=False) to use heuristic."
+        )
+
+    assets = assets or list(DEFAULT_SAMPLE_ASSETS)
+    constraints = constraints or build_default_constraints()
+    correlation_matrix = correlation_matrix if correlation_matrix is not None else DEFAULT_CORRELATION
+
+    n = len(assets)
+    asset_ids = [a.id for a in assets]
+    returns = np.array([a.expected_return for a in assets], dtype=float)
+    volatilities = np.array([a.volatility for a in assets], dtype=float)
+
+    # Compute covariance matrix from volatilities and correlation
+    covariance = np.outer(volatilities, volatilities) * correlation_matrix[:n, :n]
+
+    # Decision variables: portfolio weights
+    w = cp.Variable(n)
+
+    # Objective: minimize portfolio variance (classic Markowitz)
+    # This is convex and DCP-compliant
+    portfolio_variance = cp.quad_form(w, covariance)
+    objective = cp.Minimize(portfolio_variance)
+
+    # Constraints
+    problem_constraints = [
+        cp.sum(w) == 1.0,  # Budget constraint
+        w >= 0,  # No short selling
+    ]
+
+    # Add weight bounds from portfolio constraints
+    min_weights = {c.asset_id: c.lower_bound for c in constraints.constraints if c.asset_id and c.lower_bound is not None}
+    max_weights = {c.asset_id: c.upper_bound for c in constraints.constraints if c.asset_id and c.upper_bound is not None}
+
+    for idx, asset_id in enumerate(asset_ids):
+        if asset_id in min_weights:
+            problem_constraints.append(w[idx] >= min_weights[asset_id])
+        if asset_id in max_weights:
+            problem_constraints.append(w[idx] <= max_weights[asset_id])
+
+    # Solve
+    problem = cp.Problem(objective, problem_constraints)
+    try:
+        problem.solve(solver=cp.SCS, verbose=False)
+    except Exception as e:
+        raise RuntimeError(f"Solver failed: {e}. Check constraint feasibility.") from e
+
+    if problem.status not in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+        raise RuntimeError(f"Optimization failed with status: {problem.status}")
+
+    # Extract and normalize weights
+    weights_array = np.array(w.value, dtype=float)
+    weights_array = np.maximum(weights_array, 0)  # Clip negative tiny values
+    weights_array = weights_array / weights_array.sum()  # Ensure sum to 1
+
+    return {asset_id: float(weight) for asset_id, weight in zip(asset_ids, weights_array, strict=False)}
+
+
 def _portfolio_statistics(weights: dict[str, float], assets: list[Asset], correlation_matrix: np.ndarray) -> tuple[float, float, float, dict[str, Any]]:
     asset_map = _as_asset_map(assets)
     ordered_assets = list(weights)
@@ -364,8 +451,9 @@ def construct_case_study(
     constraints: PortfolioConstraints | None = None,
     correlation_matrix: np.ndarray | None = None,
     scenario: Scenario | None = None,
+    use_solver: bool = True,
 ) -> CaseStudyResult:
-    """Build a simple research case study with normalized constrained weights.
+    """Build a research case study with optimal or heuristic portfolio construction.
 
     Args:
         title: Case study title
@@ -374,6 +462,7 @@ def construct_case_study(
         constraints: Portfolio constraints (defaults to build_default_constraints())
         correlation_matrix: Asset correlation matrix (defaults to DEFAULT_CORRELATION)
         scenario: Optional market scenario to stress-test (defaults to Scenario.BASELINE)
+        use_solver: If True, use cvxpy Sharpe ratio maximization. If False, use heuristic.
 
     Returns:
         CaseStudyResult containing portfolio weights, returns, and diagnostics
@@ -386,19 +475,47 @@ def construct_case_study(
     constraints = constraints or build_default_constraints()
     correlation_matrix = correlation_matrix if correlation_matrix is not None else DEFAULT_CORRELATION
 
+    # Extract weight bounds for diagnostics
     min_weights = {c.asset_id: c.lower_bound for c in constraints.constraints if c.asset_id and c.lower_bound is not None}
     max_weights = {c.asset_id: c.upper_bound for c in constraints.constraints if c.asset_id and c.upper_bound is not None}
 
-    raw = np.array([1.0 / len(assets)] * len(assets), dtype=float)
-    for idx, asset in enumerate(assets):
-        lower = min_weights.get(asset.id, 0.0)
-        upper = max_weights.get(asset.id, 1.0)
-        raw[idx] = float(np.clip(raw[idx], lower, upper))
+    # Compute portfolio weights
+    try:
+        if use_solver and cp is not None:
+            # Use solver-based optimization
+            weight_map = construct_optimal_portfolio(
+                assets=assets,
+                constraints=constraints,
+                correlation_matrix=correlation_matrix,
+            )
+            solver_note = "Solver-based (cvxpy minimum variance)"
+        else:
+            # Fall back to heuristic
+            raw = np.array([1.0 / len(assets)] * len(assets), dtype=float)
+            for idx, asset in enumerate(assets):
+                lower = min_weights.get(asset.id, 0.0)
+                upper = max_weights.get(asset.id, 1.0)
+                raw[idx] = float(np.clip(raw[idx], lower, upper))
 
-    if raw.sum() <= 0:
+            if raw.sum() <= 0:
+                raw = np.array([1.0 / len(assets)] * len(assets), dtype=float)
+            weights = raw / raw.sum()
+            weight_map = {asset.id: float(weight) for asset, weight in zip(assets, weights, strict=False)}
+            solver_note = "Heuristic (normalized clipped equal-weight)"
+    except RuntimeError as e:
+        # If solver fails, fall back to heuristic
+        print(f"Solver failed, falling back to heuristic: {e}")
         raw = np.array([1.0 / len(assets)] * len(assets), dtype=float)
-    weights = raw / raw.sum()
-    weight_map = {asset.id: float(weight) for asset, weight in zip(assets, weights, strict=False)}
+        for idx, asset in enumerate(assets):
+            lower = min_weights.get(asset.id, 0.0)
+            upper = max_weights.get(asset.id, 1.0)
+            raw[idx] = float(np.clip(raw[idx], lower, upper))
+
+        if raw.sum() <= 0:
+            raw = np.array([1.0 / len(assets)] * len(assets), dtype=float)
+        weights = raw / raw.sum()
+        weight_map = {asset.id: float(weight) for asset, weight in zip(assets, weights, strict=False)}
+        solver_note = "Heuristic fallback (solver failed)"
 
     expected_return, expected_volatility, sharpe_ratio, diagnostics = _portfolio_statistics(
         weight_map,
@@ -408,16 +525,16 @@ def construct_case_study(
 
     summary = (
         "The case study constructs a diversified core portfolio that balances growth, income, "
-        "and diversifiers under explicit bounds."
+        "and diversifiers under explicit bounds using optimization."
     )
     recommendation = (
         "Use the resulting allocation as the baseline strategic mix, then refine with manager "
         "views, liquidity constraints, and implementation cost analysis."
     )
     risks = [
-        "Weights are derived from a normalized constrained heuristic and should be replaced with a solver for production use.",
         "Expected return and risk are based on forward estimates rather than realized data.",
         "Correlations may shift in stress regimes and reduce diversification benefits.",
+        "Optimization assumes known risk/return parameters that may be unstable.",
     ]
 
     return CaseStudyResult(

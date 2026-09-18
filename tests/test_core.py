@@ -15,6 +15,7 @@ from core import (  # noqa: E402
     compare_strategies,
     construct_case_study,
     construct_equal_weight_portfolio,
+    construct_optimal_portfolio,
     construct_risk_parity_portfolio,
     export_case_study,
     load_config,
@@ -151,4 +152,76 @@ def test_compare_strategies_with_scenario():
     for strategy_name, result in comparison.strategies.items():
         assert pytest.approx(sum(result.weights.values()), rel=1e-6) == 1.0
         assert result.expected_volatility > 0
+
+
+def test_optimal_portfolio_construction():
+    """Test solver-backed optimal portfolio construction."""
+    weights = construct_optimal_portfolio()
+    assert pytest.approx(sum(weights.values()), rel=1e-6) == 1.0
+    # All weights should be non-negative
+    for weight in weights.values():
+        assert weight >= -1e-6  # Allow tiny numerical errors
+
+
+def test_construct_case_study_with_solver():
+    """Test case study uses solver by default."""
+    result = construct_case_study(use_solver=True)
+    assert isinstance(result, CaseStudyResult)
+    assert pytest.approx(sum(result.weights.values()), rel=1e-6) == 1.0
+    assert result.expected_return > 0
+    assert result.expected_volatility > 0
+
+
+def test_construct_case_study_with_heuristic():
+    """Test case study can use heuristic fallback."""
+    result = construct_case_study(use_solver=False)
+    assert isinstance(result, CaseStudyResult)
+    assert pytest.approx(sum(result.weights.values()), rel=1e-6) == 1.0
+    assert result.expected_return > 0
+    assert result.expected_volatility > 0
+
+
+def test_solver_vs_heuristic_comparison():
+    """Test that solver produces different/better results than heuristic."""
+    result_optimal = construct_case_study(use_solver=True)
+    result_heuristic = construct_case_study(use_solver=False)
+
+    # Both should be valid portfolios
+    assert pytest.approx(sum(result_optimal.weights.values()), rel=1e-6) == 1.0
+    assert pytest.approx(sum(result_heuristic.weights.values()), rel=1e-6) == 1.0
+
+    # Optimal solution should have Sharpe ratio >= heuristic
+    # (accounting for numerical precision)
+    assert result_optimal.sharpe_ratio >= result_heuristic.sharpe_ratio - 1e-3
+
+
+def test_optimal_portfolio_respects_constraints():
+    """Test that optimal portfolio respects all constraints."""
+    constraints = build_default_constraints()
+    weights = construct_optimal_portfolio(constraints=constraints)
+
+    # Check budget constraint
+    assert pytest.approx(sum(weights.values()), rel=1e-6) == 1.0
+
+    # Check weight bounds
+    for constraint in constraints.constraints:
+        if constraint.asset_id and constraint.asset_id in weights:
+            weight = weights[constraint.asset_id]
+            if constraint.lower_bound is not None:
+                assert weight >= constraint.lower_bound - 1e-5, f"{constraint.asset_id} weight {weight} below lower bound {constraint.lower_bound}"
+            if constraint.upper_bound is not None:
+                assert weight <= constraint.upper_bound + 1e-5, f"{constraint.asset_id} weight {weight} above upper bound {constraint.upper_bound}"
+
+
+def test_construct_case_study_with_solver_and_scenario():
+    """Test that solver works with scenarios."""
+    result_baseline = construct_case_study(scenario=Scenario.BASELINE, use_solver=True)
+    result_risk_off = construct_case_study(scenario=Scenario.RISK_OFF, use_solver=True)
+
+    # Both should be valid
+    assert pytest.approx(sum(result_baseline.weights.values()), rel=1e-6) == 1.0
+    assert pytest.approx(sum(result_risk_off.weights.values()), rel=1e-6) == 1.0
+
+    # Risk-off scenario should have lower expected return
+    assert result_risk_off.expected_return < result_baseline.expected_return
 

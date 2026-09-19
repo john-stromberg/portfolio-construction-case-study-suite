@@ -1,6 +1,6 @@
-"""Synthetic client account generation utilities.
+"""Light synthetic example workflow utilities.
 
-This module creates realistic new-account intake examples that can be fed into
+This module creates small illustrative client-like examples that can be fed into
 portfolio construction workflows.
 """
 
@@ -31,8 +31,6 @@ class ClientRiskTolerance(str, Enum):
 
 
 class ClientGoal(str, Enum):
-    CAPITAL_PRESERVATION = "capital_preservation"
-    INCOME = "income"
     BALANCED_GROWTH = "balanced_growth"
     LONG_TERM_GROWTH = "long_term_growth"
 
@@ -44,9 +42,6 @@ class ClientAccount:
     risk_tolerance: ClientRiskTolerance
     goal: ClientGoal
     horizon_years: int
-    investable_capital: float
-    liquidity_need: float
-    tax_sensitive: bool
     constraints: PortfolioConstraints
     notes: str
 
@@ -72,9 +67,9 @@ class ClientPortfolioExample:
 
 
 _RISK_PROFILE_MAP: dict[ClientRiskTolerance, dict[str, float]] = {
-    ClientRiskTolerance.CONSERVATIVE: {"equity_cap": 0.40, "bond_min": 0.35, "gld_min": 0.05},
-    ClientRiskTolerance.MODERATE: {"equity_cap": 0.55, "bond_min": 0.25, "gld_min": 0.03},
-    ClientRiskTolerance.BALANCED: {"equity_cap": 0.65, "bond_min": 0.20, "gld_min": 0.02},
+    ClientRiskTolerance.CONSERVATIVE: {"equity_cap": 0.45, "bond_min": 0.30, "gld_min": 0.03},
+    ClientRiskTolerance.MODERATE: {"equity_cap": 0.60, "bond_min": 0.20, "gld_min": 0.02},
+    ClientRiskTolerance.BALANCED: {"equity_cap": 0.70, "bond_min": 0.15, "gld_min": 0.02},
     ClientRiskTolerance.GROWTH: {"equity_cap": 0.80, "bond_min": 0.10, "gld_min": 0.00},
     ClientRiskTolerance.AGGRESSIVE: {"equity_cap": 0.90, "bond_min": 0.05, "gld_min": 0.00},
 }
@@ -121,16 +116,13 @@ def generate_client_account(seed: int | None = None) -> ClientAccount:
     rng = Random(seed)
     risk_tolerance = _choose(ClientRiskTolerance, rng)
     goal = _choose(ClientGoal, rng)
-    horizon_years = rng.randint(3, 30)
-    investable_capital = round(rng.uniform(100_000, 5_000_000), 2)
-    liquidity_need = round(rng.uniform(0.02, 0.25), 3)
-    tax_sensitive = rng.choice([True, False])
+    horizon_years = rng.randint(3, 25)
 
     name = f"Client {rng.randint(1000, 9999)}"
     client_id = f"acct-{rng.randint(100000, 999999)}"
     constraints = _make_client_constraints(risk_tolerance, rng)
     notes = (
-        f"Synthetic intake case for a {risk_tolerance.value} investor with a {horizon_years}-year horizon. "
+        f"Illustrative synthetic example for a {risk_tolerance.value} investor with a {horizon_years}-year horizon. "
         f"Goal: {goal.value.replace('_', ' ')}."
     )
 
@@ -140,17 +132,15 @@ def generate_client_account(seed: int | None = None) -> ClientAccount:
         risk_tolerance=risk_tolerance,
         goal=goal,
         horizon_years=horizon_years,
-        investable_capital=investable_capital,
-        liquidity_need=liquidity_need,
-        tax_sensitive=tax_sensitive,
         constraints=constraints,
         notes=notes,
     )
 
 
-def generate_client_accounts(count: int = 5, seed: int | None = None) -> list[ClientAccount]:
+def generate_client_examples(count: int = 3, seed: int | None = None) -> list[ClientAccount]:
     rng = Random(seed)
     return [generate_client_account(seed=rng.randint(0, 10**9)) for _ in range(count)]
+
 
 
 def construct_portfolio_for_client(client: ClientAccount, use_solver: bool = True) -> ClientPortfolioExample:
@@ -165,6 +155,6 @@ def construct_portfolio_for_client(client: ClientAccount, use_solver: bool = Tru
     return ClientPortfolioExample(client=client, result=result, weights=result.weights)
 
 
-def generate_client_portfolio_examples(count: int = 5, seed: int | None = None, use_solver: bool = True) -> list[ClientPortfolioExample]:
-    clients = generate_client_accounts(count=count, seed=seed)
+def generate_client_portfolio_examples(count: int = 3, seed: int | None = None, use_solver: bool = True) -> list[ClientPortfolioExample]:
+    clients = generate_client_examples(count=count, seed=seed)
     return [construct_portfolio_for_client(client, use_solver=use_solver) for client in clients]

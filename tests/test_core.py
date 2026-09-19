@@ -27,7 +27,7 @@ from clients import (  # noqa: E402
     ClientRiskTolerance,
     construct_portfolio_for_client,
     generate_client_account,
-    generate_client_accounts,
+    generate_client_examples,
     generate_client_portfolio_examples,
 )
 from scenarios import Scenario, apply_scenario  # noqa: E402
@@ -240,12 +240,11 @@ def test_generate_client_account_is_reproducible():
     assert client_a.to_dict() == client_b.to_dict()
     assert client_a.risk_tolerance in list(ClientRiskTolerance)
     assert client_a.goal in list(ClientGoal)
-    assert client_a.investable_capital > 0
     assert client_a.constraints.budget_constraint == 1.0
 
 
-def test_generate_client_accounts_count():
-    clients = generate_client_accounts(count=3, seed=123)
+def test_generate_client_examples_count():
+    clients = generate_client_examples(count=3, seed=123)
     assert len(clients) == 3
     assert len({client.client_id for client in clients}) == 3
 

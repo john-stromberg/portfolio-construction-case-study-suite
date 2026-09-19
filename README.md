@@ -137,11 +137,11 @@ Each scenario adjusts asset return and volatility expectations to simulate tail 
 ```
 src/
   core.py          – Portfolio construction methods, solver optimization, comparison engine, exports
-  clients.py       – Synthetic client account intake generator and optimization adapter
+  clients.py       – Lightweight synthetic example workflow for demo cases
   scenarios.py     – Scenario definitions and stress-test application
   __init__.py      – Package exports
 tests/
-  test_core.py     – 23 comprehensive tests covering methods, solver paths, client intake, scenarios, comparisons
+  test_core.py     – 23 comprehensive tests covering methods, solver paths, example workflow, scenarios, comparisons
 notebooks/
   research.ipynb   – Interactive notebook with baseline, comparison, and scenario workflows
 reports/
@@ -180,17 +180,14 @@ Example:
 | EqualWeight | 5.60% | 8.71% | 0.3563 | 20.00% | 0.0500 |
 ```
 
-## Client account intake workflow
+## Lightweight example workflow
 
-This repo can now mimic new client accounts being brought in for portfolio construction.
+This repo includes a small synthetic example workflow to show how the optimizer can be run on a client-like case.
 
-Use the generator to create synthetic client accounts with:
-- risk tolerance
-- investment horizon
-- capital size
-- liquidity need
-- tax sensitivity
-- generated constraints aligned to the existing solver workflow
+The example is intentionally minimal and illustrative:
+- synthetic risk tolerance
+- simple horizon
+- generated bounds that stay feasible for the demo assets
 
 Example:
 
@@ -198,13 +195,13 @@ Example:
 from src import generate_client_account, generate_client_portfolio_examples
 
 client = generate_client_account(seed=42)
-example = generate_client_portfolio_examples(count=3, seed=42)
+examples = generate_client_portfolio_examples(count=3, seed=42)
 
 print(client.to_dict())
-print(example[0].result.to_markdown())
+print(examples[0].result.to_markdown())
 ```
 
-The generated client can be passed directly into the solver-backed construction flow through the included adapter.
+Use this as a demonstration of the solver-backed workflow, not as a production client intake system.
 
 ## Testing & validation
 
@@ -221,11 +218,12 @@ Tests cover (23 total):
 - Strategy comparison structure and markdown output
 - Scenario application and stress testing
 - Scenario-aware strategy comparison
+- Lightweight example workflow and reproducibility
 - Constraint validation and weight bounds
 - Configuration loading and export generation
 - End-to-end workflow (`main()`)
 
-Expected output: **19 passed** (all tests pass with cvxpy installed; heuristic fallback works without it)
+Expected output: **23 passed** (all tests pass with cvxpy installed; heuristic fallback works without it)
 
 ## Design principles
 

@@ -21,7 +21,7 @@ from .clients import (
     ClientRiskTolerance,
     construct_portfolio_for_client,
     generate_client_account,
-    generate_client_accounts,
+    generate_client_examples,
     generate_client_portfolio_examples,
 )
 from .scenarios import Scenario, apply_scenario, get_scenario_adjustment
@@ -44,7 +44,7 @@ __all__ = [
     "construct_risk_parity_portfolio",
     "export_case_study",
     "generate_client_account",
-    "generate_client_accounts",
+    "generate_client_examples",
     "generate_client_portfolio_examples",
     "get_scenario_adjustment",
     "load_config",

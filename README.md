@@ -1,3 +1,8 @@
+> **Moved:** This project is maintained in [portfolio-analytics/projects/portfolio-construction-case-study-suite](https://github.com/john-stromberg/portfolio-analytics/tree/main/projects/portfolio-construction-case-study-suite).
+> This repository is retained as a historical snapshot.
+
+---
+
 # portfolio-construction-case-study-suite
 
 Track: **SMA Quantitative Research**
